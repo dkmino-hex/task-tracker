@@ -76,7 +76,7 @@ func addtask(title, description string) error {
 	return saveTasks(tasks)
 }
 
-func listTasks() error {
+func listTasks(filter TaskStatus) error {
 	tasks, err := loadTasks()
 	if err != nil {
 		fmt.Println("Ошибка:", err)
@@ -88,23 +88,62 @@ func listTasks() error {
 		return nil
 	}
 
-	for _, task := range tasks {
-		statusText := " "
+	shown := 0
 
-		switch task.Status {
-		case todo:
-			statusText = "К выполнению"
-		case inProgress:
-			statusText = "В процессе"
-		case done:
-			statusText = "Завершено"
-		default:
-			statusText = "Неизвестный статус"
+	for _, task := range tasks {
+		if filter != "" && task.Status != filter {
+			continue
 		}
 
-		fmt.Printf("%d. [%s] %s - %s\n", task.ID, statusText, task.Title, task.Description)
+		fmt.Printf(
+			"%d. [%s] %s — %s\n",
+			task.ID,
+			task.Status,
+			task.Title,
+			task.Description,
+		)
+
+		shown++
+	}
+
+	if shown == 0 {
+		fmt.Printf("Задач со статусом %q нет.\n", filter)
 	}
 	return nil
+}
+
+func deleteTask(id int) error {
+	tasks, err := loadTasks()
+	if err != nil {
+		fmt.Println("Ошибка:", err)
+		return err
+	}
+	for i, task := range tasks {
+		if task.ID == id {
+			tasks = append(tasks[:i], tasks[i+1:]...)
+			fmt.Printf("Задача с ID %d удалена\n", id)
+			return saveTasks(tasks)
+
+		}
+	}
+	return fmt.Errorf("Задача с ID %d не найдена", id)
+}
+
+func updateTask(id int, title, description string) error {
+	tasks, err := loadTasks()
+	if err != nil {
+		return err
+	}
+
+	for i, task := range tasks {
+		if task.ID == id {
+			tasks[i].Title = title
+			tasks[i].Description = description
+			tasks[i].UpdatedAt = time.Now()
+			return saveTasks(tasks)
+		}
+	}
+	return fmt.Errorf("Задача с ID %d не найдена", id)
 }
 
 func markTaskDone(id int) {
@@ -178,7 +217,55 @@ func main() {
 		}
 
 	case "list":
-		listTasks()
+		var filter TaskStatus
+		if len(os.Args) > 3 {
+			fmt.Println("Использование: task-tracker list [todo|in-progress|done]")
+			return
+		}
+
+		if len(os.Args) == 3 {
+			filter = TaskStatus(os.Args[2])
+
+			if filter != todo && filter != inProgress && filter != done {
+				fmt.Println("Неизвестный статус. Используйте: todo, in-progress или done.")
+				return
+			}
+		}
+
+		if err := listTasks(filter); err != nil {
+			fmt.Println("Ошибка:", err)
+			return
+		}
+
+	case "delete":
+		if len(os.Args) < 3 {
+			fmt.Println("Укажите ID задачи.")
+			return
+		}
+		id, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			fmt.Println("ID должен быть числом.")
+			return
+		}
+		if err := deleteTask(id); err != nil {
+			fmt.Println("Ошибка:", err)
+			return
+		}
+
+	case "updateTask":
+		if len(os.Args) < 5 {
+			fmt.Println("Укажите ID задачи, новое название и новое описание.")
+			return
+		}
+		id, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			fmt.Println("ID должен быть числом.")
+			return
+		}
+		if err := updateTask(id, os.Args[3], os.Args[4]); err != nil {
+			fmt.Println("Ошибка:", err)
+			return
+		}
 
 	case "mark-done":
 		if len(os.Args) < 3 {
